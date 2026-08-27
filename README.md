@@ -10,7 +10,6 @@ It uses the normal Windows Bluetooth stack, so there's no driver takeover and no
 
 `winbletouch.py` is a tiny Python client for that TCP interface; `examples/` is one complete consumer (mirror → mapping → touch). Neither is required — anything that can open a socket can drive it.
 
-![WinBleTouch: a Windows desktop app drawing freehand on an iPhone over BLE](assets/demo.gif)
 
 *`examples/draw_on_mirror.py` — left-dragging in the desktop window streams `contact`/`release` to the iPhone; here it's writing into Freeform, live.*
 
@@ -105,6 +104,9 @@ Tested on Windows 11 + iOS, latest August 2026:
 
 
 ## Implementation use case example (not the library)
+
+![WinBleTouch: a Windows desktop app drawing freehand on an iPhone over BLE](assets/demo.gif)
+
 
 | File | Role |
 |---|---|
