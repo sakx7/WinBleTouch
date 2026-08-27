@@ -1,0 +1,9 @@
+# For the example consumers only. The core component (Program.cs) and the
+# minimal client (winbletouch.py, stdlib only) need none of this.
+numpy
+pillow
+opencv-python        # draw_on_mirror.py, calibrate_mirror.py
+
+# NOT on PyPI: the iPhone-mirroring backend used by _mirror.py / draw_on_mirror.py
+# / calibrate_mirror.py is a separate private project. Point IPHONE_MIRROR_DIR at
+# it, or supply your own full-screen capture.

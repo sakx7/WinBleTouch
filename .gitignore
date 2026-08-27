@@ -1,0 +1,16 @@
+# .NET build output
+bin/
+obj/
+*.user
+.vs/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# example runtime artifacts
+examples/mirror_calib.json
+examples/_verify*.png
+*.log
