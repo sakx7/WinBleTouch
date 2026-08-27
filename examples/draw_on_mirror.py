@@ -19,11 +19,10 @@ indicator included), so the mapping here is a plain normalize -- no calibration.
 A real overlay over a letterboxed video would add a crop; a rotated stream would
 add a rotation. The library never sees any of that -- only contact()/release().
 
-Run:
+Run (with the WinBleTouch service already running + iPhone paired):
     python examples/draw_on_mirror.py
-Requires: opencv-python, numpy, the iPhone mirror window open, and
-IPHONE_MIRROR_DIR set (see examples/_mirror.py). The mirror backend is a
-separate private project and is not bundled with WinBleTouch.
+Requires: opencv-python, numpy, and a mirror window with "iPhone" in its title
+showing the phone edge-to-edge (see examples/_mirror.py).
 """
 from __future__ import annotations
 import sys

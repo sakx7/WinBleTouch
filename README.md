@@ -10,9 +10,6 @@ It uses the normal Windows Bluetooth stack, so there's no driver takeover and no
 
 `winbletouch.py` is a tiny Python client for that TCP interface; `examples/` is one complete consumer (mirror → mapping → touch). Neither is required — anything that can open a socket can drive it.
 
-
-*`examples/draw_on_mirror.py` — left-dragging in the desktop window streams `contact`/`release` to the iPhone; here it's writing into Freeform, live.*
-
 ## Requirements
 
 - Windows 10/11 with a Bluetooth adapter that supports the **LE peripheral role** (most built-in and USB BT 4.0+ adapters do; the probe below tells you).
@@ -107,14 +104,15 @@ Tested on Windows 11 + iOS, latest August 2026:
 
 ![WinBleTouch: a Windows desktop app drawing freehand on an iPhone over BLE](assets/demo.gif)
 
+*`examples/draw_on_mirror.py` — left-dragging in the desktop window streams `contact`/`release` to the iPhone; here it's writing into Freeform, live. See [`examples/README.md`](examples/README.md).*
 
 | File | Role |
 |---|---|
-| `examples/mirror_consumer.py` | `Mapper` (preview px -> `0..10000`) + live-stream forwarding + `box`/`spiral` demos. |
-| `examples/draw_on_mirror.py` | Live: shows the iPhone mirror in a window, left-drag draws into whatever app is open on the phone. Owns its own window-px -> `0..10000` mapping. Needs `opencv-python`, `numpy`, the iPhoneMirror window. |
-| `examples/_mirror.py` | Helper: captures the **full** iPhone display (no status-bar/home-indicator inset) so a plain normalize is exact. |
-| `examples/calibrate_mirror.py` | Helper: 2-point affine calibration for stream sources where you *can't* get the full-screen rect (letterboxed video, cropped share). Not needed for the mirror. |
-| `examples/test_mapper.py` | Layer test for the example `Mapper` (no BLE). `python examples/test_mapper.py`. |
+| `examples/mirror_consumer.py` | `Mapper` (source px -> `0..10000`, crop + rotate) + stream forwarding + `box`/`spiral` demos. No capture, no extra deps. |
+| `examples/draw_on_mirror.py` | Live: mirror window + left-drag draws into whatever app is open on the phone. Owns its own window-px -> `0..10000` mapping. Needs `opencv-python`, `numpy`. |
+| `examples/_mirror.py` + `mirror_backend.py` | Capture the **full** iPhone display from a mirror window titled "iPhone" (no status-bar/home-indicator inset), so a plain normalize is exact. `mirror_backend.py` is vendored win32 window-capture. |
+| `examples/calibrate_mirror.py` | 2-point affine calibration for sources where you *can't* get the full-screen rect (letterboxed video, cropped share). Not needed for a full-screen mirror. |
+| `examples/test_mapper.py` | Layer test for `Mapper` (no BLE). `python examples/test_mapper.py`. |
 
 
 

@@ -81,7 +81,10 @@ def _scripted_path(t: WinTouch, points, step_delay: float = 0.012) -> None:
 
 def main() -> None:
     name = sys.argv[1] if len(sys.argv) > 1 else "help"
-    t = WinTouch()
+    if name not in ("box", "spiral", "forward"):
+        print(__doc__)
+        return
+    t = WinTouch()  # needs the WinBleTouch service running
     print("status:", t.status())
     if name == "box":
         corners = [(2000, 2000), (8000, 2000), (8000, 8000), (2000, 8000), (2000, 2000)]
@@ -103,8 +106,6 @@ def main() -> None:
         forward_stream(t, sys.stdin, m)
         t.release()
         print("stream ended")
-    else:
-        print(__doc__)
     t.close()
 
 
