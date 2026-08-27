@@ -2,3 +2,5 @@
 *.sln text eol=crlf
 *.csproj text eol=crlf
 *.png binary
+*.gif binary
+*.mp4 binary
