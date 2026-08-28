@@ -8,7 +8,7 @@ While it runs, it exposes a local TCP command interface on `127.0.0.1:8760`. Any
 
 It uses the normal Windows Bluetooth stack, so there's no driver takeover and no exclusive control of the adapter. Each GATT service runs independently, and the HID service can start or stop without interrupting other Bluetooth connections.
 
-`winbletouch.py` is a tiny Python client for that TCP interface; `examples/` is one complete consumer (mirror → mapping → touch). Neither is required — anything that can open a socket can drive it.
+`winbletouch.py` is a tiny Python client for that TCP interface, but it isn't required — anything that can open a socket can drive it.
 
 ## Requirements
 
@@ -37,9 +37,17 @@ I myself don't know what mirroring/streaming wrapper you're using, be it:
 **Wireless**: UxPlay / any AirPlay receiver
 **Commercial/easy**: AirDroid Cast
 
-Coordinate mapping is specific to that integration, and it's simple arithmetic: once you know the iOS screen bounds and the rectangle where the video is rendered, converting pointer coordinates into the `0..10000` HID range is straightforward. Whatever you use is responsible for that conversion.
+Coordinate mapping is specific to that integration, and it's simple arithmetic: once you know the iOS screen bounds and the rectangle where the video is rendered, converting a pointer coordinate into the `0..10000` HID range is:
 
-`examples/mirror_consumer.py` shows my way (`Mapper`: crop → rotate → normalize) — copy or adapt it; it is not part of the library.
+```python
+# px,py = pointer in source pixels;  (l,t,r,b) = phone-screen rect in the source
+nx = min(max((px - l) / (r - l), 0.0), 1.0)
+ny = min(max((py - t) / (b - t), 0.0), 1.0)
+hx, hy = round(nx * 10000), round(ny * 10000)     # then rotate if the source is
+                                                  # rotated relative to the device
+```
+
+Whatever you use is responsible for that conversion. The library never sees it.
 
 ## Main Files
 
@@ -97,21 +105,13 @@ Tested on Windows 11 + iOS, latest August 2026:
 ## Optional future helpers (would ship separately, not in the core)
 
 - In-range hover (`0x02`) as a distinct call.
-- A `Mapper`-style helper library for common preview geometries.
+- A coordinate-mapping helper library for common preview geometries.
 
-
-## Example consumer (not the library)
+## Demo
 
 ![WinBleTouch: a Windows desktop app drawing freehand on an iPhone over BLE](assets/demo.gif)
 
-*`examples/overlay_draw.py` — left-drag on your mirroring app's own window and it streams `contact`/`release` to the iPhone; here it's writing into Freeform, live. See [`examples/README.md`](examples/README.md).*
-
-| File | Role |
-|---|---|
-| `examples/overlay_draw.py` | Interactive: low-level mouse hook, CapsLock to arm, drag on the mirror window's phone area to draw. Renders no video of its own. Stdlib only. |
-| `examples/mirror_consumer.py` | Non-mouse input: `Mapper` (source px → `0..10000`, crop + rotate) + a stdin `x y` / `up` forwarder. `selftest` checks the math. |
-
-
+*A small consumer script maps a mouse-drag over a mirrored iPhone preview into `contact`/`release` calls — here, drawing in Freeform, live.*
 
 ----
 

@@ -11,3 +11,6 @@ __pycache__/
 venv/
 
 *.log
+
+# local consumer examples — not shipped with the repo
+examples/
