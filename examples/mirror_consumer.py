@@ -1,30 +1,21 @@
 #!/usr/bin/env python3
 """EXAMPLE CONSUMER — not part of the WinBleTouch library.
 
-Shows the downstream half of the pipeline:
+The downstream half of the pipeline, for a coordinate stream that isn't a mouse
+over a mirror window (a captured pointer feed, an automation script, etc.):
 
-    preview/source coordinates
-          -> Mapper  (de-letterbox -> rotation -> normalize -> 0..10000)
-          -> WinTouch.contact / .release   (the library)
-          -> Windows BLE HID digitizer -> iPhone/iPad
+    source coordinates
+        -> Mapper   (crop -> rotate -> normalize -> 0..10000)   <-- your job
+        -> contact(x, y) / release()                            <-- the library
 
-`Mapper` and the stream forwarding here are app concerns. Copy/adapt them; the
-library itself only ever sees absolute 0..10000 coordinates.
-
-Usage:
-    python examples/mirror_consumer.py box
-    python examples/mirror_consumer.py spiral
-    cat points.txt | python examples/mirror_consumer.py forward 480 1000
-        # each line: "x y" (source pixels) or "up"
+    # one "x y" (source pixels) or "up" per line:
+    cat points.txt | python examples/mirror_consumer.py 480 1000
 """
 from __future__ import annotations
-import math
+import socket
 import sys
-import time
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from winbletouch import WinTouch  # noqa: E402
+HOST, PORT = "127.0.0.1", 8760
 
 
 class Mapper:
@@ -36,7 +27,6 @@ class Mapper:
     """
 
     def __init__(self, width: int, height: int, crop=None, rotate: int = 0):
-        self.w, self.h = width, height
         self.crop = crop or (0, 0, width, height)
         self.rotate = rotate % 360
 
@@ -55,58 +45,40 @@ class Mapper:
         return nx * 10000, ny * 10000
 
 
-def forward_stream(t: WinTouch, lines, mapper: Mapper | None = None) -> None:
-    """Forward a live pointer stream as-is: one contact() per position event,
-    release() on 'up'. No interpolation, no synthesised timing."""
-    for raw in lines:
+def _selftest() -> None:
+    m = Mapper(400, 800)
+    assert m.to_hid(200, 400) == (5000, 5000)
+    assert m.to_hid(500, -20) == (10000, 0)                       # clamped
+    m = Mapper(480, 1000, crop=(40, 100, 440, 900))              # letterbox
+    assert m.to_hid(240, 500) == (5000, 5000)
+    assert Mapper(100, 100, rotate=90).to_hid(0, 0) == (0, 10000)
+    assert Mapper(100, 100, rotate=270).to_hid(0, 0) == (10000, 0)
+    print("Mapper selftest ok")
+
+
+def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "selftest":
+        return _selftest()
+    mapper = Mapper(int(sys.argv[1]), int(sys.argv[2])) if len(sys.argv) > 2 else None
+    sock = socket.create_connection((HOST, PORT), timeout=5)
+
+    def send(line: str) -> None:
+        sock.sendall((line + "\n").encode("ascii"))
+
+    for raw in sys.stdin:                       # forwarded as-is, no interpolation
         s = raw.strip()
         if not s:
             continue
         if s.lower() in ("up", "release", "r"):
-            t.release()
+            send("release")
             continue
         a, b = s.replace(",", " ").split()[:2]
         x, y = float(a), float(b)
-        if mapper is not None:
+        if mapper:
             x, y = mapper.to_hid(x, y)
-        t.contact(x, y)
-
-
-def _scripted_path(t: WinTouch, points, step_delay: float = 0.012) -> None:
-    for (x, y) in points:
-        t.contact(x, y)
-        time.sleep(step_delay)
-    t.release()
-
-
-def main() -> None:
-    name = sys.argv[1] if len(sys.argv) > 1 else "help"
-    if name not in ("box", "spiral", "forward"):
-        print(__doc__)
-        return
-    t = WinTouch()  # needs the WinBleTouch service running
-    print("status:", t.status())
-    if name == "box":
-        corners = [(2000, 2000), (8000, 2000), (8000, 8000), (2000, 8000), (2000, 2000)]
-        pts = []
-        for (x0, y0), (x1, y1) in zip(corners, corners[1:]):
-            pts += [(x0 + (x1 - x0) * i / 20, y0 + (y1 - y0) * i / 20) for i in range(21)]
-        _scripted_path(t, pts)
-        print("drew box")
-    elif name == "spiral":
-        pts = [
-            (5000 + (300 + i * 16) * math.cos(i / 240 * math.pi * 8),
-             5000 + (300 + i * 16) * math.sin(i / 240 * math.pi * 8))
-            for i in range(240)
-        ]
-        _scripted_path(t, pts, step_delay=0.008)
-        print("drew spiral")
-    elif name == "forward":
-        m = Mapper(int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else None
-        forward_stream(t, sys.stdin, m)
-        t.release()
-        print("stream ended")
-    t.close()
+        send(f"contact {int(round(x))} {int(round(y))}")
+    send("release")
+    sock.close()
 
 
 if __name__ == "__main__":

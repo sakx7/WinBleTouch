@@ -1,15 +1,14 @@
 # Examples
 
-None of this is part of the library. It shows the **consumer** side — turning
-some app's coordinates into the `0..10000` HID space and calling
-`contact()` / `release()`. Windows only, stdlib only, no pip installs.
+Not part of the library. The **consumer** side — turning some app's coordinates
+into the `0..10000` HID space and calling `contact()` / `release()`. Windows
+only, stdlib only, no pip installs.
 
 | File | What it does |
 |---|---|
-| `overlay_draw.py` | **Interactive.** Draw on the iPhone by dragging on your mirroring app's own window. Installs a low-level mouse hook; while *armed* (CapsLock) it swallows the left button over the phone rectangle and streams `contact`/`release`. No video is rendered here — you watch the mirror app's native window. |
-| `mirror_consumer.py` | **Scripted.** `Mapper` (source px → `0..10000`, crop + rotate) + `forward_stream` (one report per input event, no interpolation) + `box` / `spiral` / `forward` demos. No capture. |
-| `test_mapper.py` | Layer test for `Mapper`. No BLE, no capture. `python examples/test_mapper.py` |
-| `_link.py` | Fire-and-forget client used by `overlay_draw.py` (never blocks the input thread waiting for a reply). |
+| `overlay_draw.py` | **Interactive.** Draw on the iPhone by dragging on your mirroring app's own window. A low-level mouse hook, armed with CapsLock, swallows the left button over the phone rectangle and streams `contact`/`release`. Renders no video — you watch the mirror app's native window. |
+| `mirror_consumer.py` | **Non-mouse input.** `Mapper` (crop → rotate → normalize → `0..10000`) plus a stdin forwarder: pipe `x y` / `up` lines in. `selftest` checks the `Mapper` math. |
+| `_link.py` | Fire-and-forget client used by `overlay_draw.py`. |
 | `mirror_backend.py` | Finds the mirror window and the phone-screen rectangle inside it. |
 
 ## overlay_draw.py
@@ -33,20 +32,18 @@ python examples/overlay_draw.py
 detached preview. `--verbose` prints live hook state.
 
 If your mirror preview is a borderless window that still slips around, right-click
-it and enable its "Fix Window" / lock-position option — the hook alone should be
-enough, but it's belt-and-suspenders.
+it and enable its "Fix Window" / lock-position option.
 
-## Scripted input
+## mirror_consumer.py
 
 ```bash
-python examples/mirror_consumer.py box
-python examples/mirror_consumer.py spiral
-python examples/mirror_consumer.py forward 480 1000 < points.txt   # "x y" or "up" per line
+python examples/mirror_consumer.py selftest
+cat points.txt | python examples/mirror_consumer.py 480 1000   # source is 480x1000 px
 ```
 
 ## A different source
 
 `overlay_draw.py` assumes the mirror window shows the phone edge-to-edge. For
 anything else — a letterboxed video, a cropped share, a game window — take the
-cursor position (or your own frame's pixel), apply your crop/rotation/normalize,
-and call `contact(x, y)` / `release()`. The library never changes.
+cursor position (or your own frame's pixel), apply your crop/rotation/normalize
+(see `Mapper`), and call `contact(x, y)` / `release()`. The library never changes.

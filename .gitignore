@@ -10,7 +10,4 @@ __pycache__/
 .venv/
 venv/
 
-# example runtime artifacts
-examples/mirror_calib.json
-examples/_verify*.png
 *.log

@@ -109,8 +109,7 @@ Tested on Windows 11 + iOS, latest August 2026:
 | File | Role |
 |---|---|
 | `examples/overlay_draw.py` | Interactive: low-level mouse hook, CapsLock to arm, drag on the mirror window's phone area to draw. Renders no video of its own. Stdlib only. |
-| `examples/mirror_consumer.py` | Scripted: `Mapper` (source px → `0..10000`, crop + rotate) + `forward_stream` + `box`/`spiral` demos. No capture. |
-| `examples/test_mapper.py` | Layer test for `Mapper` (no BLE). `python examples/test_mapper.py`. |
+| `examples/mirror_consumer.py` | Non-mouse input: `Mapper` (source px → `0..10000`, crop + rotate) + a stdin `x y` / `up` forwarder. `selftest` checks the math. |
 
 
 
