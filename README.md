@@ -111,7 +111,8 @@ Tested on Windows 11 + iOS, latest August 2026:
 
 ![WinBleTouch: a Windows desktop app drawing freehand on an iPhone over BLE](assets/demo.gif)
 
-*A small consumer script maps a mouse-drag over a mirrored iPhone preview into `contact`/`release` calls — here, drawing in Freeform, live.*
+The GIF is from an earlier build. Preview smoothness is entirely down to your mirroring app and its capture path — WinBleTouch does no video. Touch latency is a separate, Bluetooth-LE concern and can still improve through hardware, firmware, or software optimizations, but the BLE connection interval itself is negotiated by iOS and cannot be directly tuned by WinBleTouch through `GattServiceProvider`.
+
 
 ----
 
