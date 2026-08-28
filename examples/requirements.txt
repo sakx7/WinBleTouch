@@ -1,8 +1,0 @@
-# For the example consumers only. The core component (Program.cs) and the
-# minimal client (winbletouch.py, stdlib only) need none of this.
-
-pillow               # _mirror.py / mirror_backend.py (window capture)
-numpy                # draw_on_mirror.py, calibrate_mirror.py
-opencv-python        # draw_on_mirror.py, calibrate_mirror.py
-
-# mirror_consumer.py and test_mapper.py need nothing beyond the stdlib.
