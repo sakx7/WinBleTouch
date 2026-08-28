@@ -53,6 +53,14 @@ class WinBleTouch
 {
     const byte ReportId = 1;
 
+    // Setup output is plain; once advertising and waiting for a host, every line
+    // is timestamped (HH:mm:ss.fff) so a pasted log shows the timing between
+    // connect / subscribe / report.
+    static volatile bool _ready;
+    static string Ts() => _ready ? $"{DateTime.Now:HH:mm:ss.fff}  " : "";
+    static void Log(string msg) => Console.WriteLine(Ts() + msg);
+    static void LogErr(string msg) => Console.Error.WriteLine(Ts() + msg);
+
     // Exact ESP32 report map (AbsoluteHIDTouch.h reportMap()), REPORT_ID -> 1.
     // Digitizers (0x0D) / Touch Screen (0x04), stylus collection, Tip Switch +
     // In Range + absolute X/Y, logical/physical range 0..10000.
@@ -108,7 +116,7 @@ class WinBleTouch
             bool wasDown = _contactDown;
             _contactDown = true;
             await SendAsync(0x03, cx, cy); // Tip Switch + In Range
-            if (!wasDown) Console.WriteLine($"[touch] DOWN  ({cx},{cy})");
+            if (!wasDown) Log($"[touch] DOWN  ({cx},{cy})");
         }
         finally { _txLock.Release(); }
     }
@@ -121,7 +129,7 @@ class WinBleTouch
             if (!_contactDown) return;
             _contactDown = false;
             await SendAsync(0x00, _lastX, _lastY); // contact released
-            Console.WriteLine($"[touch] UP    ({_lastX},{_lastY})");
+            Log($"[touch] UP    ({_lastX},{_lastY})");
         }
         finally { _txLock.Release(); }
     }
@@ -135,7 +143,7 @@ class WinBleTouch
     //                                     4 NO_PERIPHERAL_ROLE
     static async Task<int> Main()
     {
-        Console.WriteLine("WinBleTouch — Windows BLE HID touchscreen digitizer\n");
+        Console.WriteLine("WinBleTouch — Windows BLE HID touchscreen digitizer");
         var app = new WinBleTouch();
         try
         {
@@ -143,24 +151,24 @@ class WinBleTouch
         }
         catch (ProbeException ex)
         {
-            Console.Error.WriteLine($"[PROBE ERROR] {ex.Message}");
-            Console.WriteLine($"[PROBE RESULT] {ex.Verdict}");
+            LogErr($"[PROBE ERROR] {ex.Message}");
+            Log($"[PROBE RESULT] {ex.Verdict}");
             app.Stop();
             return ex.ExitCode;
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine(ex);
-            Console.WriteLine("[PROBE RESULT] UNEXPECTED_ERROR");
+            Log("[PROBE RESULT] UNEXPECTED_ERROR");
             app.Stop();
             return 1;
         }
 
-        Console.WriteLine("[PROBE RESULT] HID_0x1812_PUBLISHED");
+        Log("[PROBE RESULT] HID_0x1812_PUBLISHED");
 
         if (Environment.GetEnvironmentVariable("WINBLETOUCH_PROBE") == "1")
         {
-            Console.WriteLine("PROBE mode: setup succeeded, exiting without interactive loop.");
+            Log("PROBE mode: setup succeeded, exiting without interactive loop.");
             app.Stop();
             return 0;
         }
@@ -170,7 +178,8 @@ class WinBleTouch
 
         if (Console.IsInputRedirected)
         {
-            Console.WriteLine("\nHeadless mode. Advertising; drive touches via the control server. Ctrl+C to stop.");
+            Console.WriteLine("Headless mode — advertising; drive touches via the control server. Ctrl+C to stop.");
+            _ready = true;   // from here on, every line is timestamped
             for (int t = 0; ; t++)
             {
                 await Task.Delay(5000);
@@ -181,6 +190,7 @@ class WinBleTouch
         Console.WriteLine(
             "\nKeys:  d = contact center   u = release   q = quit\n" +
             $"       (real callers stream `contact <x> <y>` / `release` to 127.0.0.1:{port})\n");
+        _ready = true;   // from here on, every line is timestamped
 
         while (true)
         {
@@ -190,7 +200,7 @@ class WinBleTouch
         }
 
         app.Stop();
-        Console.WriteLine("Stopped. Bluetooth stack untouched.");
+        Log("stopped. Bluetooth stack untouched.");
         return 0;
     }
 
@@ -201,8 +211,8 @@ class WinBleTouch
             throw new ProbeException("NO_ADAPTER", 2,
                 "BluetoothAdapter.GetDefaultAsync() returned null — hardware/driver problem. " +
                 "Says nothing about whether Windows would allow HID 0x1812.");
-        Console.WriteLine($"Adapter: peripheral-role supported = {radio.IsPeripheralRoleSupported}, " +
-                          $"LE central-role = {radio.IsCentralRoleSupported}");
+        Log($"adapter: peripheral-role supported = {radio.IsPeripheralRoleSupported}, " +
+            $"LE central-role = {radio.IsCentralRoleSupported}");
         if (!radio.IsPeripheralRoleSupported)
             throw new ProbeException("NO_PERIPHERAL_ROLE", 4,
                 "The Bluetooth adapter does not support the LE peripheral role.");
@@ -225,9 +235,9 @@ class WinBleTouch
             using var d = a.GetDeferral();
             var r = await a.GetRequestAsync();
             var b = r.Value.ToArray();
-            Console.WriteLine($"[gatt] HID Control Point written: {(b.Length > 0 ? b[0].ToString() : "?")}");
+            Log($"[gatt] HID Control Point written: {(b.Length > 0 ? b[0].ToString() : "?")}");
         };
-        Console.WriteLine("  + HID Control Point");
+        Log("  + HID Control Point");
 
         // Protocol Mode — read + write-without-response, report protocol (0x01).
         byte protocolMode = 0x01;
@@ -243,7 +253,7 @@ class WinBleTouch
             var r = await a.GetRequestAsync();
             var w = new DataWriter(); w.WriteByte(protocolMode);
             r.RespondWithValue(w.DetachBuffer());
-            Console.WriteLine($"[gatt] Protocol Mode read -> {protocolMode}");
+            Log($"[gatt] Protocol Mode read -> {protocolMode}");
         };
         pm.WriteRequested += async (s, a) =>
         {
@@ -251,9 +261,9 @@ class WinBleTouch
             var r = await a.GetRequestAsync();
             var b = r.Value.ToArray();
             if (b.Length > 0) protocolMode = b[0];
-            Console.WriteLine($"[gatt] Protocol Mode written -> {protocolMode}");
+            Log($"[gatt] Protocol Mode written -> {protocolMode}");
         };
-        Console.WriteLine("  + Protocol Mode");
+        Log("  + Protocol Mode");
 
         // Input Report — notify + read, encrypted. Carries the 5-byte touch packet.
         var inParams = new GattLocalCharacteristicParameters
@@ -282,9 +292,9 @@ class WinBleTouch
             using var d = a.GetDeferral();
             var r = await a.GetRequestAsync();
             r.RespondWithValue(_lastPacket.AsBuffer());
-            Console.WriteLine("[gatt] Input Report read by host");
+            Log("[gatt] Input Report read by host");
         };
-        Console.WriteLine("  + Input Report (+ Report Reference descriptor)");
+        Log("  + Input Report (+ Report Reference descriptor)");
 
         // Battery service (independent provider so it can start/stop separately).
         try
@@ -297,15 +307,15 @@ class WinBleTouch
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"  (battery service skipped: {ex.Message})");
+            Log($"  (battery service skipped: {ex.Message})");
         }
 
         // NOTE: Device Information Service (PnP ID 0x05AC, appearance 0x03C2) is
         // reserved by Windows and cannot be published via GattServiceProvider.
-        Console.WriteLine("  ! Device Information / PnP ID: reserved by Windows, omitted");
+        Log("  ! Device Information / PnP ID: reserved by Windows, omitted");
 
         _hidProvider.AdvertisementStatusChanged += (s, _) =>
-            Console.WriteLine($"[adv] status = {s.AdvertisementStatus}");
+            Log($"[adv] status = {s.AdvertisementStatus}");
 
         _hidProvider.StartAdvertising(new GattServiceProviderAdvertisingParameters
         {
@@ -313,14 +323,13 @@ class WinBleTouch
             IsConnectable = true,
         });
 
-        Console.WriteLine($"\nAdvertising HID touchscreen (status = {_hidProvider.AdvertisementStatus}).");
-        Console.WriteLine("On the iPhone: Settings > Bluetooth > pick this PC's name > pair.");
+        Log($"[adv] advertising HID touchscreen (status = {_hidProvider.AdvertisementStatus})");
     }
 
     static async Task<GattServiceProvider> CreateServiceAsync(Guid uuid, string label)
     {
         var result = await GattServiceProvider.CreateAsync(uuid);
-        Console.WriteLine($"CreateAsync {label}: {result.Error}");
+        Log($"CreateAsync {label}: {result.Error}");
         if (result.Error == BluetoothError.Success)
             return result.ServiceProvider;
 
@@ -345,7 +354,7 @@ class WinBleTouch
         var r = await svc.CreateCharacteristicAsync(uuid, p);
         if (r.Error != BluetoothError.Success)
             throw new InvalidOperationException($"{label}: {r.Error}");
-        Console.WriteLine($"  + {label} ({value.Length} bytes)");
+        Log($"  + {label} ({value.Length} bytes)");
     }
 
     // Readable characteristic backed by an event handler, so every host read is logged.
@@ -363,9 +372,9 @@ class WinBleTouch
             using var d = a.GetDeferral();
             var req = await a.GetRequestAsync();
             req.RespondWithValue(value.AsBuffer());
-            Console.WriteLine($"[gatt] {label} read by host ({value.Length} bytes)");
+            Log($"[gatt] {label} read by host ({value.Length} bytes)");
         };
-        Console.WriteLine($"  + {label} ({value.Length} bytes)");
+        Log($"  + {label} ({value.Length} bytes)");
     }
 
     public bool IsSubscribed => Volatile.Read(ref _subscribers) > 0;
@@ -375,17 +384,17 @@ class WinBleTouch
         int subs = _input.SubscribedClients.Count;
         var advStatus = _hidProvider.AdvertisementStatus;
         if (subs > 0 || tick % 6 == 0)
-            Console.WriteLine($"[status] adv={advStatus} subscribers={subs} contactDown={_contactDown}");
+            Log($"[status] adv={advStatus} subscribers={subs} contactDown={_contactDown}");
     }
 
     void OnSubscribersChanged(GattLocalCharacteristic sender, object args)
     {
         int now = sender.SubscribedClients.Count;
         int was = Interlocked.Exchange(ref _subscribers, now);
-        if (now > was) Console.WriteLine($"[hid] host SUBSCRIBED to input report ({now} client(s))");
+        if (now > was) Log($"[hid] host SUBSCRIBED to input report ({now} client(s))");
         else if (now < was)
         {
-            Console.WriteLine($"[hid] host unsubscribed ({now} client(s))");
+            Log($"[hid] host unsubscribed ({now} client(s))");
             _contactDown = false;
         }
     }
@@ -393,7 +402,7 @@ class WinBleTouch
     // 5-byte packet identical to ESP32 send(): [state, xLo, xHi, yLo, yHi].
     async Task SendAsync(byte state, ushort x, ushort y)
     {
-        if (_subscribers == 0) { Console.WriteLine("   (no subscriber; report dropped)"); return; }
+        if (_subscribers == 0) { Log("   (no subscriber; report dropped)"); return; }
         var packet = new byte[] { state, (byte)(x & 0xFF), (byte)(x >> 8), (byte)(y & 0xFF), (byte)(y >> 8) };
         _lastPacket = packet;
         await _input.NotifyValueAsync(packet.AsBuffer());
@@ -421,7 +430,7 @@ class WinBleTouch
     {
         var listener = new TcpListener(IPAddress.Loopback, port);
         listener.Start();
-        Console.WriteLine($"[ctl] control endpoint on 127.0.0.1:{port}  (contact / release)");
+        Log($"[ctl] control endpoint on 127.0.0.1:{port}  (contact / release)");
         while (true)
         {
             var client = await listener.AcceptTcpClientAsync();
@@ -432,7 +441,7 @@ class WinBleTouch
     async Task HandleControlClientAsync(TcpClient client)
     {
         var ep = client.Client.RemoteEndPoint?.ToString();
-        Console.WriteLine($"[ctl] client connected {ep}");
+        Log($"[ctl] client connected {ep}");
         try
         {
             using var _ = client;
@@ -450,7 +459,7 @@ class WinBleTouch
             }
         }
         catch (IOException) { }
-        Console.WriteLine($"[ctl] client disconnected {ep}");
+        Log($"[ctl] client disconnected {ep}");
     }
 
     public async Task<string> ExecuteCommandAsync(string line)
