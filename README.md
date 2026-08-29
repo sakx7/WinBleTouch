@@ -1,6 +1,6 @@
 # WinBleTouch
 
-**Windows-native BLE HID touchscreen digitizer for iOS, using absolute touch coordinates without AssistiveTouch.**
+**Windows-native BLE HID touchscreen digitizer for iOS, using absolute touch coordinates — no AssistiveTouch, no cursor.**
 
 **WinBleTouch is a .NET Windows program** (`Program.cs`, run with `dotnet run`) that makes your PC act as a Bluetooth Low Energy touchscreen digitizer, using `GattServiceProvider`.
 
@@ -14,7 +14,18 @@ It uses the normal Windows Bluetooth stack, so there's no driver takeover and no
 
 - Windows 10/11 with a Bluetooth adapter that supports the **LE peripheral role** (most built-in and USB BT 4.0+ adapters do; the probe below tells you).
 - .NET SDK 10+ (project targets `net10.0-windows10.0.22621.0`).
-- An iPhone/iPad to pair with. AssistiveTouch is **not** required.
+- An iPhone/iPad to pair with, with **Accessibility > Zoom** enabled — see below.
+
+## iOS setup
+
+On iOS, an unpaired BLE digitizer's reports are ignored unless an accessibility touch path is active. **Accessibility > Zoom** provides one:
+
+1. **Settings > Accessibility > Zoom > On.**
+2. **Zoom Region:** Full Screen. **Zoom Filter:** None. **Zoom Controller:** Off. (These are the defaults — nothing to change.)
+3. The screen zooms in at first. Triple-tap with three fingers to open the Zoom menu, then drag the magnification slider all the way down to 1x. At 1x, screen coordinates map 1:1.
+
+At 1x with the controller off there is no lens, no floating button, and no cursor — nothing on screen. AssistiveTouch is **not** used or required. Turning Zoom back off stops touches being delivered.
+Verified on stock, non-jailbroken **iOS 18.6.2** (iPhone 14), **iOS 26.6** (iPhone 16 Pro Max), and **iOS 17** (iPhone 13), Developer Mode on and off.
 
 ## Scope
 
@@ -27,7 +38,7 @@ Note this project is the **BLE HID transport only**. Its entire public surface:
 
 **Coordinate contract:** `x`, `y` are absolute HID coordinates in `0..10000` (`0,0` = top-left of the digitizer surface, `10000,10000` = bottom-right); out-of-range is clamped.
 
-Taps, holds, drags, freehand strokes, gesture recognition, and app logic are all yours — the library only streams contacts. A tap is `contact` then `release`; a drag is `contact` repeatedly then `release`.
+Taps, holds, drags, freehand strokes, gesture recognition, and app logic are all yours — the library only streams contacts. A tap is `contact` then `release`; a drag is `contact` repeatedly then `release`. Single contact only — no multi-finger gestures.
 
 ## Make your own mapper
 
@@ -63,7 +74,7 @@ Whatever you use is responsible for that conversion. The library never sees it.
 dotnet run -c Release
 ```
 
-On the iPhone/iPad: Settings > Bluetooth > pick this PC > pair. **Accept the pairing prompt on *both* the PC and the iPhone** — Windows shows one too and it's easy to miss; if you only confirm on the phone, iOS connects but never subscribes.
+On the iPhone/iPad, do the **iOS setup** above, then Settings > Bluetooth, pick this PC, and pair. **Accept the pairing prompt on *both* the PC and the iPhone** — Windows shows one too and it's easy to miss; if you only confirm on the phone, iOS connects but never subscribes.
 
 Console should show `host SUBSCRIBED to input report`. Then drive it:
 
@@ -94,11 +105,9 @@ WINBLETOUCH_PROBE=1 dotnet run -c Release # bash
 
 ## Findings
 
-Tested on Windows 11 + iOS, latest August 2026:
-
 - `GattServiceProvider.CreateAsync(0x1812)` returns **Success** — HID is not policy-blocked. (Windows reserves DIS / GATT / GAP / Scan Parameters, not HID.)
-- A fresh iPhone pairing reads HID Information + Report Map and **subscribes to the Input Report on the first connection**; a 5-byte absolute report yields a **real iOS touch** at the sent coordinates.
-- **AssistiveTouch is not required.** Missing DIS / PnP ID / GAP appearance did not block iOS.
+- A fresh iPhone pairing reads HID Information + Report Map and **subscribes to the Input Report on the first connection**.
+- With **Zoom on**, a 5-byte absolute stylus report is delivered to the foreground app as a real touch at the sent coordinates — holds, a 3×3 screen grid, and drags all landed within one physical pixel of the expected mapping on iOS 18.6.2 and 26.6. With **Zoom off**, all tested iOS versions ignore the same reports.
 - `GattServiceProvider` gives no control over advertising flags / appearance / bonding parameters; pairing + encryption are OS-driven when iOS first reads the encrypted Input Report. One transient `[adv] Aborted` before `Started` is normal.
 - Reserved-service behaviour and peripheral-role support are stack/adapter dependent — run the probe on your hardware.
 

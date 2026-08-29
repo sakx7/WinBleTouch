@@ -12,5 +12,6 @@ venv/
 
 *.log
 
-# local consumer examples — not shipped with the repo
+# local — not shipped with the repo
 examples/
+testing/

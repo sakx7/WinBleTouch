@@ -8,6 +8,7 @@ using Windows.Storage.Streams;
 
 // WinBleTouch — Windows-native BLE HID touchscreen digitizer for iOS,
 // using absolute touch coordinates (no AssistiveTouch, no relative mouse).
+// On all iOS, the iPhone must have Accessibility > Zoom enabled (Full Screen, 1x, Controller off) for reports to be delivered as touch — see README.
 //
 // Scope: the BLE HID transport ONLY. It advertises HID 0x1812 with an absolute
 // touch-digitizer report map (adapted from a known-good ESP32 design) via
