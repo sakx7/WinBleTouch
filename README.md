@@ -122,6 +122,10 @@ WINBLETOUCH_PROBE=1 dotnet run -c Release # bash
 
 The GIF is from an earlier build. Preview smoothness is entirely down to your mirroring app and its capture path — WinBleTouch does no video. Touch latency is a separate, Bluetooth-LE concern and can still improve through hardware, firmware, or software optimizations, but the BLE connection interval itself is negotiated by iOS and cannot be directly tuned by WinBleTouch through `GattServiceProvider`.
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+
 
 ----
 
