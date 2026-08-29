@@ -1,52 +1,43 @@
 # WinBleTouch
 
-**Windows-native BLE HID touchscreen digitizer for iOS, using absolute touch coordinates — no AssistiveTouch, no cursor.**
+Turn a Windows PC into a Bluetooth LE touchscreen for an iPhone or iPad. It sends absolute touch coordinates over BLE HID as a real digitizer, not a mouse, so there's no cursor and no AssistiveTouch.
 
-**WinBleTouch is a .NET Windows program** (`Program.cs`, run with `dotnet run`) that makes your PC act as a Bluetooth Low Energy touchscreen digitizer, using `GattServiceProvider`.
+`Program.cs` is a .NET program you run with `dotnet run`. While it's running it listens on `127.0.0.1:8760`; anything that can open a socket sends `contact <x> <y>` / `release` and it relays those to the paired phone as HID reports.
 
-While it runs, it exposes a local TCP command interface on `127.0.0.1:8760`. Any other program or script connects there and sends absolute touch input, which WinBleTouch relays to the paired iPhone/iPad as BLE HID reports.
+It uses the normal Windows Bluetooth stack. No driver takeover and no exclusive hold on the adapter. The HID service can start and stop without dropping other Bluetooth connections.
 
-It uses the normal Windows Bluetooth stack, so there's no driver takeover and no exclusive control of the adapter. Each GATT service runs independently, and the HID service can start or stop without interrupting other Bluetooth connections.
-
-`winbletouch.py` is a tiny Python client for that TCP interface, but it isn't required — anything that can open a socket can drive it.
+`winbletouch.py` is a small Python client for that socket. You don't need it.
 
 ## Requirements
 
-- Windows 10/11 with a Bluetooth adapter that supports the **LE peripheral role** (most built-in and USB BT 4.0+ adapters do; the probe below tells you).
+- Windows 10/11 with a Bluetooth adapter that supports the LE peripheral role (most BT 4.0+ adapters do; the probe below checks).
 - .NET SDK 10+ (project targets `net10.0-windows10.0.22621.0`).
-- An iPhone/iPad to pair with, with **Accessibility > Zoom** enabled — see below.
+- An iPhone or iPad with **Accessibility > Zoom** turned on (see below).
 
 ## iOS setup
 
-On iOS, an unpaired BLE digitizer's reports are ignored unless an accessibility touch path is active. **Accessibility > Zoom** provides one:
+iOS ignores reports from an unpaired BLE digitizer unless an accessibility touch path is running. Zoom is the easiest one to switch on:
 
-1. **Settings > Accessibility > Zoom > On.**
-2. **Zoom Region:** Full Screen. **Zoom Filter:** None. **Zoom Controller:** Off. (These are the defaults — nothing to change.)
-3. The screen zooms in at first. Triple-tap with three fingers to open the Zoom menu, then drag the magnification slider all the way down to 1x. At 1x, screen coordinates map 1:1.
+1. Settings > Accessibility > Zoom > **On**.
+2. Zoom Region: Full Screen. Zoom Filter: None. Zoom Controller: Off. These are already the defaults.
+3. The screen magnifies at first. Triple-tap with three fingers to open the Zoom menu, then drag the magnification slider all the way down to 1x. At 1x there's no lens, no button, no cursor, and coordinates map 1:1.
 
-At 1x with the controller off there is no lens, no floating button, and no cursor — nothing on screen. AssistiveTouch is **not** used or required. Turning Zoom back off stops touches being delivered.
-Verified on stock, non-jailbroken **iOS 18.6.2** (iPhone 14), **iOS 26.6** (iPhone 16 Pro Max), and **iOS 17** (iPhone 13), Developer Mode on and off.
+Turning Zoom back off stops touches from coming through. AssistiveTouch is not involved.
 
-## Scope
+Tested on stock, non-jailbroken iOS 17 (iPhone 13), 18.6.2 (iPhone 14) and 26.6 (iPhone 16 Pro Max), Developer Mode on and off.
 
-Note this project is the **BLE HID transport only**. Its entire public surface:
+## API
 
-
-| File | Role |
-|---|---|
-| `Program.cs` | The component. GATT server + `contact`/`release`, exposed on a loopback control endpoint (`127.0.0.1:8760`, env `WINBLETOUCH_PORT`). Line protocol: `contact <x> <y>` / `release` / `status` / `ping`. |
-| `winbletouch.py` | Minimal Python client — `WinTouch.contact(x, y)` / `.release()`. Import it, or use it as a template for a client in another language. |
-
+Two calls, and that's the whole thing:
 
 | Call | Meaning |
 |---|---|
-| `contact(x, y)` | send/update the active absolute contact |
-| `release()` | release the active contact |
+| `contact(x, y)` | put down, or move, the active contact |
+| `release()` | lift it |
 
-**Coordinate contract:** `x`, `y` are absolute HID coordinates in `0..10000` (`0,0` = top-left of the digitizer surface, `10000,10000` = bottom-right); out-of-range is clamped.
+`x` and `y` are `0..10000` across the digitizer surface (`0,0` = top-left, `10000,10000` = bottom-right). Out of range is clamped.
 
-Taps, holds, drags, freehand strokes, gesture recognition, and app logic are all yours — the library only streams contacts. A tap is `contact` then `release`; a drag is `contact` repeatedly then `release`. Single contact only — no multi-finger gestures.
-
+A tap is `contact` then `release`. A drag is `contact` a few times then `release`. One contact at a time, no multi-touch. Taps, holds, gestures, and screen-to-HID coordinate mapping are your job, not the library's.
 
 ## Run
 
@@ -54,48 +45,52 @@ Taps, holds, drags, freehand strokes, gesture recognition, and app logic are all
 dotnet run -c Release
 ```
 
-On the iPhone/iPad, do the **iOS setup** above, then Settings > Bluetooth, pick this PC, and pair. **Accept the pairing prompt on *both* the PC and the iPhone** — Windows shows one too and it's easy to miss; if you only confirm on the phone, iOS connects but never subscribes.
+Do the iOS setup, then pair from Settings > Bluetooth. Confirm the pairing prompt **on both the PC and the phone** — Windows shows its own and it's easy to miss; skip it and iOS connects but never subscribes.
 
-Console should show `host SUBSCRIBED to input report`. Then drive it:
+Wait for `host SUBSCRIBED to input report`, then:
 
 ```bash
 python winbletouch.py
 ```
 
-Or from a headless run (`dotnet run` with redirected stdin), stream `contact`/`release` lines to the control endpoint.
+Or pipe `contact` / `release` lines to `127.0.0.1:8760` from anything.
 
-### Probe mode
+### Probe
 
-Runs setup only and prints one `[PROBE RESULT]` verdict (also the exit code):
+Checks setup and prints one verdict (also the exit code):
 
-```powershell
-$env:WINBLETOUCH_PROBE=1; dotnet run -c Release # PowerShell
-```
 ```bash
-WINBLETOUCH_PROBE=1 dotnet run -c Release # bash
+WINBLETOUCH_PROBE=1 dotnet run -c Release
 ```
-
+```powershell
+$env:WINBLETOUCH_PROBE=1; dotnet run -c Release
+```
 
 | Verdict | exit | Meaning |
 |---|---|---|
-| `NO_ADAPTER` | 2 | `BluetoothAdapter.GetDefaultAsync()` null — hardware/driver problem. Nothing about HID policy. |
-| `NO_PERIPHERAL_ROLE` | 4 | Adapter present, can't be a BLE peripheral. |
-| `HID_0x1812_DISABLED_BY_POLICY` | 3 | Windows blocks the HID service on this stack. |
-| `HID_0x1812_PUBLISHED` | 0 | **Success.** |
+| `HID_0x1812_PUBLISHED` | 0 | works |
+| `NO_ADAPTER` | 2 | no adapter, or a driver problem |
+| `HID_0x1812_DISABLED_BY_POLICY` | 3 | Windows blocks the HID service on this stack |
+| `NO_PERIPHERAL_ROLE` | 4 | adapter can't act as a BLE peripheral |
 
+## Files
 
+| File | |
+|---|---|
+| `Program.cs` | the program: GATT server plus the socket on `127.0.0.1:8760` (set `WINBLETOUCH_PORT` to change it). Line protocol: `contact <x> <y>` / `release` / `status` / `ping`. |
+| `winbletouch.py` | Python client — `WinTouch.contact(x, y)` / `.release()`. Or copy it as a starting point for another language. |
 
-## Optional future helpers (would ship separately, not in the core)
+## Notes
 
-- In-range hover (`0x02`) as a distinct call.
-- A coordinate-mapping helper library for common preview geometries.
+- Windows reserves DIS / GATT / GAP / Scan Parameters, so PnP ID and appearance can't be set from `GattServiceProvider`. iOS doesn't need them.
+- Connection interval is negotiated by iOS and isn't exposed here, so latency has to be chased in firmware and hardware.
+- One `[adv] Aborted` before `Started` at startup is normal.
 
+## Ideas, not built
+
+- Hover (`0x02`) as its own call.
+- A coordinate-mapping helper for common mirror layouts.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-
-
-----
-
-Generative AI was used to correct the grammar in the content.
+MIT. See [LICENSE](LICENSE).
