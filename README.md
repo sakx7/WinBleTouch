@@ -28,7 +28,7 @@ Tested on stock, non-jailbroken iOS 17 (iPhone 13), 18.6.2 (iPhone 14) and 26.6 
 
 ## API
 
-Two calls, and that's the whole thing:
+Two calls:
 
 | Call | Meaning |
 |---|---|
@@ -45,7 +45,8 @@ A tap is `contact` then `release`. A drag is `contact` a few times then `release
 dotnet run -c Release
 ```
 
-Do the iOS setup, then pair from Settings > Bluetooth. Confirm the pairing prompt **on both the PC and the phone** — Windows shows its own and it's easy to miss; skip it and iOS connects but never subscribes.
+Do the iOS setup, then pair from Settings > Bluetooth. Confirm the pairing prompt **on both the PC and the phone** 
+Windows shows its own it's easy to miss; if u skip it, iOS connects but never subscribes.
 
 Wait for `host SUBSCRIBED to input report`, then:
 
