@@ -211,7 +211,8 @@ class WinBleTouch
         if (radio is null)
             throw new ProbeException("NO_ADAPTER", 2,
                 "BluetoothAdapter.GetDefaultAsync() returned null — hardware/driver problem. " +
-                "Says nothing about whether Windows would allow HID 0x1812.");
+                "Says nothing about whether Windows would allow HID 0x1812. Check Device Manager, Bluetooth service, and that the adapter is not disabled by policy. " +
+                "Try Disable/Enable in Device Manager to reset the adapter.");
         Log($"adapter: peripheral-role supported = {radio.IsPeripheralRoleSupported}, " +
             $"LE central-role = {radio.IsCentralRoleSupported}");
         if (!radio.IsPeripheralRoleSupported)

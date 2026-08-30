@@ -91,6 +91,7 @@ $env:WINBLETOUCH_PROBE=1; dotnet run -c Release
 
 - Hover (`0x02`) as its own call.
 - A coordinate-mapping helper for common mirror layouts.
+- Linux/ARM compatibility
 
 ## License
 
