@@ -10,13 +10,11 @@ using Windows.Storage.Streams;
 // using absolute touch coordinates (no AssistiveTouch, no relative mouse).
 // On all iOS, the iPhone must have Accessibility > Zoom enabled (Full Screen, 1x, Controller off) for reports to be delivered as touch — see README.
 //
-// Scope: the BLE HID transport ONLY. It advertises HID 0x1812 with an absolute
-// touch-digitizer report map (adapted from a known-good ESP32 design) via
-// GattServiceProvider, and exposes exactly:
-//     contact(x, y)   send/update the active absolute contact  (0..10000)
-//     release()       release the active contact
-// over a loopback control endpoint. Coordinate mapping, de-letterboxing,
-// rotation, gestures and app logic are the consumer's responsibility.
+// BLE HID transport ONLY. Advertises HID 0x1812 (single-finger touchscreen via GattServiceProvider).
+// Loopback endpoint primitives:
+//   contact(x, y)  Send/update active contact (0..10000)
+//   release()      Release contact
+// Consumer handles scaling, rotation, gestures, and app logic.
 
 static class Uuids
 {
@@ -55,23 +53,24 @@ class WinBleTouch
     const byte ReportId = 1;
 
     // Setup output is plain; once advertising and waiting for a host, every line
-    // is timestamped (HH:mm:ss.fff) so a pasted log shows the timing between
-    // connect / subscribe / report.
+    // is timestamped (HH:mm:ss.fff) so a pasted log shows the timing between connect / subscribe / report.
     static volatile bool _ready;
     static string Ts() => _ready ? $"{DateTime.Now:HH:mm:ss.fff}  " : "";
     static void Log(string msg) => Console.WriteLine(Ts() + msg);
     static void LogErr(string msg) => Console.Error.WriteLine(Ts() + msg);
 
-    // Exact ESP32 report map (AbsoluteHIDTouch.h reportMap()), REPORT_ID -> 1.
-    // Digitizers (0x0D) / Touch Screen (0x04), stylus collection, Tip Switch +
-    // In Range + absolute X/Y, logical/physical range 0..10000.
+    // genuine single-finger touchscreen report. Confidence is needed on Apple hosts: 
+    // without it IOHIDEventDriver classifies a Finger collection as a Hand, which prevents SpringBoard's edge recognizers from identifying the originating screen edge. 
+    // Coordinates remain absolute 0..10000.
     static readonly byte[] ReportMap =
     {
         0x05, 0x0D, 0x09, 0x04, 0xA1, 0x01, 0x85, ReportId,
-        0x09, 0x20, 0xA1, 0x00,
-        0x09, 0x42, 0x09, 0x32, 0x15, 0x00, 0x25, 0x01,
+        0x09, 0x22, 0xA1, 0x02,
+        0x09, 0x42, 0x09, 0x47, 0x15, 0x00, 0x25, 0x01,
         0x75, 0x01, 0x95, 0x02, 0x81, 0x02,
-        0x75, 0x01, 0x95, 0x06, 0x81, 0x01,
+        0x75, 0x01, 0x95, 0x06, 0x81, 0x03,
+        0x09, 0x51, 0x15, 0x00, 0x25, 0x7F,
+        0x75, 0x08, 0x95, 0x01, 0x81, 0x02,
         0x05, 0x01, 0x09, 0x01, 0xA1, 0x00,
         0x09, 0x30, 0x09, 0x31,
         0x16, 0x00, 0x00, 0x26, 0x10, 0x27,
@@ -88,21 +87,13 @@ class WinBleTouch
     GattServiceProvider? _batteryProvider;
     GattLocalCharacteristic _input = null!;
     int _subscribers;
-    byte[] _lastPacket = { 0x00, 0, 0, 0, 0 };
+    byte[] _lastPacket = { 0x02, 0x00, 0, 0, 0, 0 };
 
-    // === PUBLIC SURFACE =======================================================
-    // The entire reusable API of this component is two calls. Coordinate
-    // contract: x and y are ABSOLUTE HID coordinates in 0..10000 (0,0 = top-left
-    // of the digitizer surface, 10000,10000 = bottom-right). Out-of-range values
-    // are clamped.
-    //
-    //   Contact(x, y)  send/update the active absolute contact
-    //                  (no active contact -> touch down there;
-    //                   active contact    -> move that same contact there)
-    //   Release()      release the active contact
-    //
-    // Taps, holds, drags, freehand drawing, coordinate mapping, de-letterboxing,
-    // rotation, gesture synthesis: all downstream. Not this component's job.
+    // ==== PUBLIC API =====
+    // Absolute HID coordinates: 0..10000 (0,0 top-left to 10000,10000 bottom-right). Clamped.
+    //   Contact(x, y)  Touch down or move active contact
+    //   Release()      Release active contact
+    // Gestures, mapping, rotation, and higher-level logic are handled downstream.
     readonly SemaphoreSlim _txLock = new(1, 1);
     bool _contactDown;
     ushort _lastX, _lastY;
@@ -113,10 +104,15 @@ class WinBleTouch
         await _txLock.WaitAsync();
         try
         {
+            if (!IsSubscribed)
+                throw new InvalidOperationException("no HID client is subscribed");
+
             _lastX = cx; _lastY = cy;
             bool wasDown = _contactDown;
+            // Once notification delivery is attempted it can fail ambiguously.
+            // Keep the contact marked down so a later release can safely retry.
             _contactDown = true;
-            await SendAsync(0x03, cx, cy); // Tip Switch + In Range
+            await SendAsync(0x03, cx, cy); // Tip Switch + Confidence
             if (!wasDown) Log($"[touch] DOWN  ({cx},{cy})");
         }
         finally { _txLock.Release(); }
@@ -128,8 +124,12 @@ class WinBleTouch
         try
         {
             if (!_contactDown) return;
+            if (!IsSubscribed)
+                throw new InvalidOperationException("no HID client is subscribed");
+
+            await SendAsync(0x02, _lastX, _lastY); // Tip off; Confidence remains set
+            // Only a confirmed UP clears local state; on an uncertain failure a subsequent release remains possible.
             _contactDown = false;
-            await SendAsync(0x00, _lastX, _lastY); // contact released
             Log($"[touch] UP    ({_lastX},{_lastY})");
         }
         finally { _txLock.Release(); }
@@ -139,9 +139,11 @@ class WinBleTouch
     static ushort Clamp(int v) => (ushort)Math.Clamp(v, 0, 10000);
 
     // Exit codes (every run emits exactly one [PROBE RESULT] line):
-    //   0 HID_0x1812_PUBLISHED            2 NO_ADAPTER
-    //   1 UNEXPECTED_ERROR                3 HID_0x1812_DISABLED_BY_POLICY
-    //                                     4 NO_PERIPHERAL_ROLE
+    //   0 HID_0x1812_PUBLISHED            
+    //   1 UNEXPECTED_ERROR                
+    //   2 NO_ADAPTER
+    //   3 HID_0x1812_DISABLED_BY_POLICY
+    //   4 NO_PERIPHERAL_ROLE
     static async Task<int> Main()
     {
         Console.WriteLine("WinBleTouch — Windows BLE HID touchscreen digitizer");
@@ -180,7 +182,7 @@ class WinBleTouch
         if (Console.IsInputRedirected)
         {
             Console.WriteLine("Headless mode — advertising; drive touches via the control server. Ctrl+C to stop.");
-            _ready = true;   // from here on, every line is timestamped
+            _ready = true;
             for (int t = 0; ; t++)
             {
                 await Task.Delay(5000);
@@ -191,7 +193,7 @@ class WinBleTouch
         Console.WriteLine(
             "\nKeys:  d = contact center   u = release   q = quit\n" +
             $"       (real callers stream `contact <x> <y>` / `release` to 127.0.0.1:{port})\n");
-        _ready = true;   // from here on, every line is timestamped
+        _ready = true;
 
         while (true)
         {
@@ -211,8 +213,8 @@ class WinBleTouch
         if (radio is null)
             throw new ProbeException("NO_ADAPTER", 2,
                 "BluetoothAdapter.GetDefaultAsync() returned null — hardware/driver problem. " +
-                "Says nothing about whether Windows would allow HID 0x1812. Check Device Manager, Bluetooth service, and that the adapter is not disabled by policy. " +
-                "Try Disable/Enable in Device Manager to reset the adapter.");
+                "Does not guarantee Windows HID (0x1812) support. Check Device Manager, " +
+                "Bluetooth service, and system policy, or toggle the adapter to reset it.");
         Log($"adapter: peripheral-role supported = {radio.IsPeripheralRoleSupported}, " +
             $"LE central-role = {radio.IsCentralRoleSupported}");
         if (!radio.IsPeripheralRoleSupported)
@@ -267,7 +269,7 @@ class WinBleTouch
         };
         Log("  + Protocol Mode");
 
-        // Input Report — notify + read, encrypted. Carries the 5-byte touch packet.
+        // Input Report — notify + read, encrypted. Carries the 6-byte touch packet.
         var inParams = new GattLocalCharacteristicParameters
         {
             CharacteristicProperties = GattCharacteristicProperties.Read
@@ -312,8 +314,7 @@ class WinBleTouch
             Log($"  (battery service skipped: {ex.Message})");
         }
 
-        // NOTE: Device Information Service (PnP ID 0x05AC, appearance 0x03C2) is
-        // reserved by Windows and cannot be published via GattServiceProvider.
+        // NOTE: Device Information Service (PnP ID 0x05AC, appearance 0x03C2) is reserved by Windows and cannot be published via GattServiceProvider.
         Log("  ! Device Information / PnP ID: reserved by Windows, omitted");
 
         _hidProvider.AdvertisementStatusChanged += (s, _) =>
@@ -397,20 +398,39 @@ class WinBleTouch
         else if (now < was)
         {
             Log($"[hid] host unsubscribed ({now} client(s))");
-            _contactDown = false;
+            if (now == 0)
+            {
+                _contactDown = false;
+                _lastPacket = new byte[] { 0x02, 0x00, 0, 0, 0, 0 };
+            }
         }
     }
 
-    // 5-byte packet identical to ESP32 send(): [state, xLo, xHi, yLo, yHi].
+    // 6-byte report: [tip|confidence, contactId, xLo, xHi, yLo, yHi].
     async Task SendAsync(byte state, ushort x, ushort y)
     {
-        if (_subscribers == 0) { Log("   (no subscriber; report dropped)"); return; }
-        var packet = new byte[] { state, (byte)(x & 0xFF), (byte)(x >> 8), (byte)(y & 0xFF), (byte)(y >> 8) };
+        var packet = new byte[]
+        {
+            state, 0x00,
+            (byte)(x & 0xFF), (byte)(x >> 8),
+            (byte)(y & 0xFF), (byte)(y >> 8)
+        };
         _lastPacket = packet;
-        await _input.NotifyValueAsync(packet.AsBuffer());
+
+        var results = await _input.NotifyValueAsync(packet.AsBuffer());
+        if (results.Count == 0)
+            throw new IOException("HID notification reached no subscribed client");
+
+        var failures = results
+            .Where(r => r.Status != GattCommunicationStatus.Success || r.BytesSent != packet.Length)
+            .Select(r => $"status={r.Status} bytes={r.BytesSent}/{packet.Length}" +
+                (r.ProtocolError is byte p ? $" protocol=0x{p:X2}" : ""))
+            .ToArray();
+        if (failures.Length > 0)
+            throw new IOException("HID notification failed: " + string.Join("; ", failures));
     }
 
-    // --- Interactive keyboard aid (manual testing only) -----------------------
+    // --- Interactive keyboard aid (manual testing only) ---
     public async Task HandleKeyAsync(char key)
     {
         switch (key)
@@ -420,14 +440,12 @@ class WinBleTouch
         }
     }
 
-    // --- Loopback control endpoint ------------------------------------------
-    // The component's IPC surface, mirroring the public API 1:1. Line protocol
-    // on 127.0.0.1:<port>, one command per line:
-    //   contact <x> <y>   x,y absolute HID coords 0..10000
-    //   release
-    //   status | ping     operational plumbing (not touch semantics)
-    // Each command replies "ok[ ...]" or "err <msg>" so a caller can pace.
-    // No tap/drag/hover/gesture commands — those belong to the consumer.
+    // --- Loopback IPC (127.0.0.1:<port>) -------------------------------
+    // Line protocol mirroring the API (replies "ok[...]" or "err <msg>"):
+    //   contact <x> <y>   Absolute HID coords (0..10000)
+    //   release           Release contact
+    //   status | ping     Plumbing/health checks
+    // Gestures and higher-level logic belong to the user.
     public async Task RunControlServerAsync(int port)
     {
         var listener = new TcpListener(IPAddress.Loopback, port);
@@ -487,7 +505,7 @@ class WinBleTouch
 
     public void Stop()
     {
-        try { if (_contactDown) SendAsync(0x00, _lastX, _lastY).Wait(500); } catch { }
+        try { if (_contactDown) SendAsync(0x02, _lastX, _lastY).Wait(500); } catch { }
         try { _hidProvider?.StopAdvertising(); } catch { }
         try { _batteryProvider?.StopAdvertising(); } catch { }
     }
