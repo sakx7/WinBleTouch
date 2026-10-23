@@ -6,7 +6,7 @@ using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
 using Windows.Storage.Streams;
 
-// WinBleTouch — Windows-native BLE HID touchscreen digitizer for iOS,
+// Digitizer — Windows-native BLE HID touchscreen digitizer for iOS,
 // using absolute touch coordinates (no AssistiveTouch, no relative mouse).
 // On all iOS, the iPhone must have Accessibility > Zoom enabled (Full Screen, 1x, Controller off) for reports to be delivered as touch — see README.
 //
@@ -51,13 +51,13 @@ internal sealed class ProbeException : Exception
         : base(message, innerException) { Verdict = verdict; ExitCode = exitCode; }
 }
 
-class WinBleTouch
+class Digitizer
 {
     const byte InputReportId = 1;
     const byte FeatureReportId = 2;
     const int ContactBytes = 6;
     static readonly int ContactSlots = int.TryParse(
-        Environment.GetEnvironmentVariable("WINBLETOUCH_CONTACTS"), out var n) && n >= 1 ? n : 10;
+        Environment.GetEnvironmentVariable("DIGITIZER_CONTACTS"), out var n) && n >= 1 ? n : 10;
     static readonly int InputReportLength = ContactSlots * ContactBytes + 1;
 
     // Setup output is plain; once advertising and waiting for a host, every line
@@ -296,8 +296,8 @@ class WinBleTouch
     //   4 NO_PERIPHERAL_ROLE
     static async Task<int> Main()
     {
-        Console.WriteLine("WinBleTouch — Windows BLE HID touchscreen digitizer");
-        var app = new WinBleTouch();
+        Console.WriteLine("Digitizer — Windows BLE HID touchscreen digitizer");
+        var app = new Digitizer();
         try
         {
             await app.StartAsync();
@@ -319,14 +319,14 @@ class WinBleTouch
 
         Log("[PROBE RESULT] HID_0x1812_PUBLISHED");
 
-        if (Environment.GetEnvironmentVariable("WINBLETOUCH_PROBE") == "1")
+        if (Environment.GetEnvironmentVariable("DIGITIZER_PROBE") == "1")
         {
             Log("PROBE mode: setup succeeded, exiting without interactive loop.");
             app.Stop();
             return 0;
         }
 
-        int port = int.TryParse(Environment.GetEnvironmentVariable("WINBLETOUCH_PORT"), out var p) ? p : 8760;
+        int port = int.TryParse(Environment.GetEnvironmentVariable("DIGITIZER_PORT"), out var p) ? p : 8760;
         _ = app.RunControlServerAsync(port);
 
         _ready = true;

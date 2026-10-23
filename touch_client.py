@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Python client for WinBleTouch. Coordinates are 0..10000."""
+"""Python client for Digitizer. Coordinates are 0..10000."""
 from __future__ import annotations
 import socket
 
 HOST, PORT = "127.0.0.1", 8760
 
 
-class WinTouch:
+class BleTouch:
     def __init__(self, host: str = HOST, port: int = PORT, timeout: float = 5.0):
         self.sock = socket.create_connection((host, port), timeout=timeout)
         self.f = self.sock.makefile("rwb", buffering=0)
@@ -37,7 +37,7 @@ class WinTouch:
         except OSError:
             pass
 
-    def __enter__(self) -> "WinTouch":
+    def __enter__(self) -> "BleTouch":
         return self
 
     def __exit__(self, *exc) -> None:
