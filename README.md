@@ -8,7 +8,10 @@ Use a Windows PC as a Bluetooth LE digitizer for an iPhone or iPad. Touches use 
 - .NET SDK 10+
 - iPhone or iPad with Accessibility > Zoom enabled
 
-Set Zoom to Full Screen, 1x magnification, with the Zoom Controller off.
+    <sub>Zoom's `ZWEventProcessor` sets a HID event filter mask of `0x13` (**digitizer, keyboard, mouse**).</sub>
+
+    - Set Zoom to 1x magnification, default screen (search up if your stuck).
+
 
 ## Run
 
@@ -28,23 +31,29 @@ host SUBSCRIBED to input report
 The service listens on `127.0.0.1:8760`:
 
 ```text
-contact <x> <y>
-release
+contact [id] <x> <y>    stage a touch (id defaults to 0)
+send                     flush all staged contacts as one HID frame
+release [id]             release one contact (or all if no id)
 ```
 
-Coordinates range from `0..10000`, with `(0,0)` at the top-left and `(10000,10000)` at the bottom-right. Stream `contact` updates for a drag, then call `release`.
+Coordinates range from `0..10000`, with `(0,0)` at the top-left and `(10000,10000)` at the bottom-right.
+
+**Frame model:** `contact` stages state without sending. `send` packs all unreleased contacts into a single HID frame. Contacts persist until explicitly released, each frame is a complete snapshot of every active contact. How the receiving app interprets the input is application behaviour, not a protocol concern.
 
 Python usage:
 
 ```python
 from winbletouch import WinTouch
 
-with WinTouch() as touch:
-    touch.contact(5000, 5000)
-    touch.release()
+with WinTouch() as t:
+    t.contact(5000, 5000)   # stage contact 0
+    t.send()                 # deliver to device
+    t.release()              # lift
 ```
 
-You are encouraged to build custom applications on top of this framework (such as a live mapper). The given Python client translates raw contact and release events into system wide actions. 
+Interactive examples and multitouch demos: [winbletouch.ipynb](winbletouch.ipynb).
+
+You are encouraged to build custom applications on top of this framework (such as a live mapper). The given Python client translates raw contact and release events into system wide actions.
 
 If iOS has cached an older report map, forget PC in Bluetooth settings and pair again.
 
@@ -57,7 +66,6 @@ $env:WINBLETOUCH_PROBE=1; dotnet run -c Release
 ## TODO
 
 - [ ] Findings writeup 
-- [ ] Potential Extended HID usage
 - [ ] latency/timing data
 - [ ] Linux/ARM port
 
